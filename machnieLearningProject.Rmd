@@ -1,0 +1,82 @@
+---
+title: 'Practical Machine Learning: Course project write-up'
+author: "Joonas Siivonen"
+date: "6/1/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("caret")
+```
+
+## Introduction
+
+This project is about predicting the manner  in which a test subject did an exercise. This is the "classe" variable in the training set. It has five values exactly according to the specification (Classe A), throwing the elbows to the front (Classe B), lifting the dumbbell only halfway (Classe C), lowering the dumbbell only halfway (Classe D) and throwing the hips to the front (Classe E).
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz4kB3HCus3
+
+## Getting the data 
+```{r download data, eval=FALSE, cache=TRUE}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv" )
+```
+
+## Pre-processing the data 
+```{r pre-processing}
+courseProlem <- read.csv("pml-testing.csv")
+#it seems that the testing data contains columns containing only NAs, let's remove those
+columnContainingValuea <- apply(courseProlem, 2, function(x) !all(is.na(x)))
+courseProlem <- courseProlem[,columnContainingValuea]
+
+#same pre-treamtent to the training data also testing data contains only value "no" for new_window variable, so let's do the selection. 
+
+training <- subset(read.csv("pml-training.csv"), new_window=="no")
+training <- training[,columnContainingValuea]
+
+#splitting the training data to two groups.       
+set.seed(1337)
+inTrain <- createDataPartition(training$X, p=0.5, list = FALSE)
+
+train <- training[inTrain,]
+testing <- training[-inTrain,]
+
+#standardizing the data and removing variables with near zero variance and NAs. Also removing all timestamps and username info as those most probably are not good predictors. 
+preProcessing <- preProcess(train[8:60], method = c("center", "scale", "nzv"))
+trainS <- predict(preProcessing, train[8:60])
+testingS <- predict(preProcessing, testing[8:60])
+courseProlemS <-predict(preProcessing, courseProlem[8:60])
+```
+
+## Exploration
+
+```{r pressure, echo=FALSE, cache=TRUE}
+featurePlot(trainS[,-53], train$user_name)
+```
+It seems that the data has verry little clear differences or patterns - it is not possible select variables based on visual assement. 
+
+## Fitting a Model
+All variables were selected that passed the pre-prosessign to the model and as adequote computing power is available to do a brute force calculations like this. 
+```{r, cache=TRUE}
+library(doMC)
+registerDoMC(cores = 4)
+rf  <- train(classe~., data=trainS, method="rf")
+#Making predictions for test set
+rf.res <- predict(rf, testingS)
+```
+
+#Out of sample errors 
+```{r}
+confusionMatrix(rf.res, testingS$classe)
+```
+The model performs really well - almost perfectly with separate testing data.
+
+##Exercise data
+Predicting the excercise data with the trained model 
+```{R}
+
+courseProblemS.res <- predict(rf, courseProlemS)
+courseProblem.ans <- data.frame(predicted=courseProblemS.res, problemID=courseProlem$problem_id)
+
+```
+(results not shown but 100% points collected)
